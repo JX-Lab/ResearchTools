@@ -1,8 +1,34 @@
-# 结构化 PDF 批量提取工具
+# 从 PDF 批量提取文字和表格
 
-`extract_structured_pdf.py` 从原生文字型 PDF 中按阅读顺序提取文本，可生成 Markdown、逐条目结构表，并可按名称把指定字段回填到已有表格。工具支持单栏/双栏、多页 PDF、跨栏和跨文件条目，并允许用 JSON 配置版面和解析规则。
+这个工具可以读取一个或一批 PDF，把其中的文字整理成 Markdown 文档或 Excel/CSV 表格。它还可以按名称把提取结果补回已有的项目清单。
 
-本工具不执行 OCR。扫描件、复杂表格、任意混排杂志和需要图文对应的 PDF 不属于当前支持范围。
+最适合处理排版规律的报告、说明书、条目集和单栏/双栏文档。
+
+## 先判断 PDF 能不能处理
+
+打开 PDF，尝试用鼠标选中并复制一段文字：
+
+- 能正常选中和复制：通常可以处理。
+- 整页像一张图片，无法选中文字：这是扫描件，本工具不能直接处理，需要先用 OCR 软件识别文字。
+
+复杂表格、文字绕图片排版、频繁变化的多栏版面，也可能需要人工整理。
+
+## 最快开始
+
+从一个 PDF 生成 Markdown 和 Excel：
+
+```bash
+python extract_structured_pdf.py \
+  --input report.pdf \
+  --markdown-output report.md \
+  --records-output report.xlsx
+```
+
+脚本默认自动判断页面是单栏还是双栏。运行结束后：
+
+- `report.md` 适合阅读、搜索和继续编辑。
+- `report.xlsx` 每页或每个识别出的条目占一行。
+- 同目录下还会生成一个 JSON 报告，记录处理页数、错误和匹配情况。
 
 ## 安装
 
@@ -15,58 +41,67 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## 快速使用
+## 处理多个 PDF
 
-处理一个 PDF，并生成 Markdown、逐页结构表和 JSON 报告：
-
-```bash
-python extract_structured_pdf.py --input /path/to/report.pdf --columns auto --markdown-output report.md --records-output report.xlsx
-```
-
-默认配置会自动判断单栏或双栏，并把每个 PDF 页面作为一个 Markdown 小节。也可以传入目录，按自然顺序批量处理其中的 PDF：
-
-```bash
-python extract_structured_pdf.py --input /path/to/reports --pattern "report_*.pdf" --start-file report_51.pdf --markdown-output reports.md
-```
-
-## 回填已有表格
-
-使用结构化条目配置时，可按明确列名匹配并将提取字段写入新文件。例如使用下文的 `custom.json`：
-
-```bash
-python extract_structured_pdf.py --input /path/to/reports --config custom.json --merge-input 项目清单.xlsx --merge-key-column 项目 --merge-field 摘要:项目摘要 --merge-output 项目清单_已回填.xlsx
-```
-
-`--merge-field` 可重复，例如同时回填摘要和负责人。未匹配行原值保持不变，空的提取值也不会覆盖已有内容。
-
-名称规范化由 `entry.normalization` 配置；默认只做 Unicode 规范化和首尾空白清理。提取结果出现同名条目时，回填默认停止并报告歧义；可显式选择 `--duplicate-policy first|last|join`。
-
-工具不会默认覆盖输入表。确需原地更新时使用 `--in-place`，脚本会先在同一目录生成带时间戳的备份。
-
-## 通用文本模式
-
-默认配置会自动判断单栏或双栏，并把每个 PDF 页面作为一个 Markdown 小节：
+把同类 PDF 放在一个目录中：
 
 ```bash
 python extract_structured_pdf.py \
-  --input /path/to/book.pdf \
-  --columns auto \
+  --input reports \
+  --pattern '*.pdf' \
+  --markdown-output all_reports.md \
+  --records-output all_reports.xlsx
+```
+
+只处理文件名从 `report_51.pdf` 开始的一段文件：
+
+```bash
+python extract_structured_pdf.py \
+  --input reports \
+  --start-file report_51.pdf \
+  --end-file report_80.pdf \
+  --markdown-output selected_reports.md
+```
+
+子目录中也有 PDF 时，加上 `--recursive`。
+
+## 只处理指定页
+
+```bash
+python extract_structured_pdf.py \
+  --input book.pdf \
   --pages '1-3,8,10-' \
   --markdown-output book.md
 ```
 
-自动分栏属于启发式判断。版式已知时应使用 `--columns 1` 或 `--columns 2`；不在页面正中分栏时再指定 `--column-split 0.48` 等比例。
+`1-3,8,10-` 表示第 1 到 3 页、第 8 页，以及第 10 页到最后一页。
 
-## 自定义 JSON 配置
+如果自动分栏顺序不正确，可以明确指定：
 
-`--config custom.json` 会递归覆盖默认配置。列表字段整体替换，不与内置列表合并。以下配置把通用模式改为按两行标题切分条目：
+- `--columns 1`：单栏。
+- `--columns 2`：双栏。
+- `--columns auto`：自动判断。
+
+## 先检查，不生成结果
+
+不确定版面是否能正确识别时，先运行：
+
+```bash
+python extract_structured_pdf.py --input report.pdf --dry-run
+```
+
+这会显示识别摘要，但不会写出正式结果文件。
+
+## 按条目提取
+
+默认情况下，工具把每一页当成一个条目。如果文档由重复的“名称 + 编号 + 正文”组成，可以写一个 JSON 配置，告诉工具如何识别每个条目的开头。
+
+例如 `custom.json`：
 
 ```json
 {
   "layout": {
-    "columns": "2",
-    "top_margin_ratio": 0.05,
-    "bottom_margin_ratio": 0.04
+    "columns": "2"
   },
   "entry": {
     "mode": "sequence",
@@ -75,48 +110,75 @@ python extract_structured_pdf.py \
       {"field": "code", "pattern": "(?P<value>REPORT-[A-Z]+-\\d+)"}
     ],
     "name_field": "display_name"
-  },
-  "markdown": {
-    "emit_title_fields": ["code"]
   }
 }
 ```
 
-标题规则使用 Python 正则表达式并对整行匹配。命名捕获组 `value` 存在时，其内容作为字段值；否则使用整行。规则增加 `"remove_whitespace": true` 时会移除该标题字段中的排版空格。`entry.value_replacements` 可按标题字段配置精确纠错映射。`entry.mode` 可为 `page` 或 `sequence`。
-
-`fields.capture_bracket_fields` 控制是否提取 `【字段】`；`fields.include` 非空时只保留列出的字段，`fields.exclude` 用于排除字段。
-
-## 输出与检查
-
-- Markdown：每个条目或页面一个标题，保持抽取后的正文行。
-- CSV/TSV/XLSX：每个条目一行，包含标题字段、起止来源、正文以及检测到的 `【字段】`。
-- JSON 报告：默认与第一个输出文件同目录，文件名以 `_report.json` 结尾。
-
-报告包含选中文件和页数、无文字页、解析错误、条目数、重复规范化名称、字段出现次数以及表格匹配情况。先检查而不写文件可使用：
+然后运行：
 
 ```bash
-python extract_structured_pdf.py --input /path/to/report.pdf --dry-run
+python extract_structured_pdf.py \
+  --input reports \
+  --config custom.json \
+  --records-output projects.xlsx
 ```
+
+这里的 `pattern` 是文字匹配规则。只有不同条目的标题格式比较固定时，才需要使用这个进阶功能。
+
+如果正文使用 `【摘要】`、`【负责人】` 这类标记，工具会自动把它们识别为表格字段。需要更复杂的规则时，再查看脚本中的默认配置 `GENERIC_PROFILE`。
+
+## 把结果补回已有 Excel
+
+假设提取结果中有项目名称和摘要，而原来的 `项目清单.xlsx` 也有“项目”列，可以这样生成补充后的新表：
+
+```bash
+python extract_structured_pdf.py \
+  --input reports \
+  --config custom.json \
+  --merge-input 项目清单.xlsx \
+  --merge-key-column 项目 \
+  --merge-field 摘要:项目摘要 \
+  --merge-output 项目清单_已回填.xlsx
+```
+
+`摘要:项目摘要` 表示：把 PDF 中识别出的“摘要”，写到原表的“项目摘要”列。
+
+工具默认生成新文件，不覆盖原表。使用 `--in-place` 原地更新时，也会先建立带时间的备份。遇到重名条目时默认停止，避免把内容填错；确认处理方式后可用 `--duplicate-policy first|last|join`。
+
+## 常见问题
+
+**提取出来的阅读顺序不对**
+
+先尝试 `--columns 1` 或 `--columns 2`。如果双栏中线不在正中间，可以用 `--column-split 0.48` 调整分割位置。
+
+**页眉、页脚混进正文**
+
+使用 `--top-margin` 和 `--bottom-margin` 忽略页面顶部或底部的一部分，例如 `--top-margin 0.05`。
+
+**有些页没有文字**
+
+检查 JSON 报告中的无文字页。如果这些页面是扫描图，需要先做 OCR。
+
+**输出表里一个条目被拆成多段**
+
+通常是标题匹配规则过宽或过窄。先对少量页面使用 `--dry-run`，再调整 JSON 配置。
 
 ## 常用参数
 
 ```text
---input PATH                  PDF 文件或 PDF 目录
---pattern GLOB                目录文件模式，默认 *.pdf
---recursive                   递归查找 PDF
---start-file NAME             自然排序后的起始文件（包含）
---end-file NAME               自然排序后的结束文件（包含）
---pages RANGE                 每个 PDF 内的页码，如 1-3,5,8-
---config JSON                 覆盖默认配置的 JSON 文件
---columns auto|1|2            覆盖分栏模式
---column-split RATIO          双栏分割位置
---top-margin RATIO            忽略的顶部比例
---bottom-margin RATIO         忽略的底部比例
---markdown-output PATH        Markdown 输出
---records-output PATH         CSV/TSV/XLSX 条目表
---report-output PATH          JSON 报告
---strict                      遇到第一个 PDF/页面错误即停止
---dry-run                     只解析和显示摘要
+--input PATH             一个 PDF 或包含 PDF 的目录
+--pattern GLOB           目录中要处理的文件名规则
+--recursive              同时查找子目录
+--start-file NAME        从哪个文件开始
+--end-file NAME          到哪个文件结束
+--pages RANGE            页码范围，例如 1-3,5,8-
+--columns auto|1|2       自动、单栏或双栏
+--config JSON            条目识别配置
+--markdown-output PATH   Markdown 保存位置
+--records-output PATH    CSV、TSV 或 Excel 保存位置
+--report-output PATH     处理报告保存位置
+--dry-run                只检查，不生成正式结果
+--strict                 遇到第一个错误就停止
 ```
 
-完整参数以 `python extract_structured_pdf.py --help` 为准。
+完整参数可运行 `python extract_structured_pdf.py --help` 查看。

@@ -1,130 +1,127 @@
-# SwissTargetPrediction 批量预测脚本
+# 批量预测化合物靶点
 
-`swiss_target_predict_from_smi.py` 使用 Selenium 控制本机 Edge 或 Chrome，将 SMILES 逐条提交到 SwissTargetPrediction，并把每个化合物的预测结果保存为独立 CSV。脚本支持常见文本、表格和 JSON 输入，维护进度清单，并可在任务中断后继续运行。
+这个工具把化合物的 SMILES 逐个提交到 SwissTargetPrediction 网站，并把网站给出的预测结果保存下来。
 
-## 使用前提
+“靶点”通常指可能与化合物发生作用的蛋白质。预测结果适合用于筛选研究方向，不能代替实验验证，也不表示化合物一定具有某种治疗作用。
 
-- Python 3.10 或更高版本。
-- 已安装最新版 Microsoft Edge 或 Google Chrome，运行环境必须能显示真实浏览器窗口。
-- 能访问 `swisstargetprediction.ch`。
-- 使用过程应遵守 SwissTargetPrediction 的服务条款，不要高并发或过快提交。
+## 使用前要准备什么？
 
-安装：
+1. 化合物的 SMILES。它是一串表示化学结构的字符，可以先用本仓库的 PubChem 工具获得。
+2. 最新版 Microsoft Edge 或 Google Chrome。
+3. 能够打开 [SwissTargetPrediction](https://www.swisstargetprediction.ch/) 网站的网络。
+4. Python 3.10 或更高版本。
+
+第一次使用时安装依赖：
 
 ```bash
-cd /mnt/disk1/yanganqi/compound_batch_tools/swiss_target_prediction
+cd swiss_target_prediction
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Selenium 4 通常会通过 Selenium Manager 自动匹配驱动。离线环境或自动匹配失败时，手动下载与浏览器版本一致的 `msedgedriver`/`chromedriver`，然后使用 `--driver-path`。
+运行时会出现真实浏览器窗口，这是正常现象。不要在任务运行期间关闭或频繁操作这个窗口。
 
-## 支持的输入
+## 输入表怎么准备？
 
-- `.smi`、`.txt`：每个非注释行格式为 `SMILES ID`；ID 可省略。以 `#` 开头的行会跳过。
-- `.csv`、`.tsv`：有表头时自动识别 SMILES 和 ID 列；也可显式指定列名。
-- `.xlsx`、`.xls`：可选择工作表。
-- `.json`、`.jsonl`：字段规则与表格列相同。
-- 一个或多个 `--smiles`：无需输入文件，自动生成 `direct_1` 等 ID。
+推荐准备一个 CSV 或 Excel 表，至少包含一列 SMILES。最好再准备一列容易辨认的化合物编号：
 
-可自动识别的 SMILES 列名包括 `smiles`、`canonical_smiles`、`isomeric_smiles`、`pubchem_canonical_smiles`、`pubchem_isomeric_smiles`。可自动识别的 ID 列名包括 `mol_id`、`molecule_id`、`compound_id`、`id`、`name`、`cid` 和 `pubchem_cid`。
+| compound_id | smiles |
+| --- | --- |
+| CMP001 | CCO |
+| CMP002 | CC(=O)OC1=CC=CC=C1C(=O)O |
 
-标准 SMI 示例：
+支持 SMI、TXT、CSV、TSV、XLSX、XLS、JSON 和 JSONL。常见的 `smiles`、`canonical_smiles`、`pubchem_isomeric_smiles` 等列名可以自动识别。
 
-```text
-# SMILES ID
-CCO ethanol
-CC(=O)OC1=CC=CC=C1C(=O)O aspirin
-```
+## 最快开始
 
-CSV 示例：
-
-```csv
-compound_id,smiles
-CMP001,CCO
-CMP002,CC(=O)OC1=CC=CC=C1C(=O)O
-```
-
-ID 会用于结果文件名，因此脚本会把空格和特殊字符替换为下划线；重复 ID 会依次追加 `_2`、`_3`。
-
-## 快速使用
-
-从 SMI 文件运行人类靶点预测：
+从 Excel 读取 PubChem 工具生成的 SMILES，并预测人类靶点：
 
 ```bash
 python swiss_target_predict_from_smi.py \
-  --input compounds.smi \
+  --input pubchem_results.xlsx \
+  --smiles-column pubchem_isomeric_smiles \
+  --id-column pubchem_cid \
   --output-dir swiss_results \
   --browser edge \
   --organism human
 ```
 
-从 Excel 指定列和工作表：
+从简单的 SMI 文件运行：
 
 ```bash
 python swiss_target_predict_from_smi.py \
-  --input pubchem_results.xlsx \
-  --sheet Sheet1 \
-  --smiles-column pubchem_isomeric_smiles \
-  --id-column pubchem_cid \
-  --output-dir swiss_results \
-  --browser chrome
+  --input compounds.smi \
+  --output-dir swiss_results
 ```
 
-直接输入 SMILES：
+也可以直接输入一个 SMILES，不准备表格：
 
 ```bash
 python swiss_target_predict_from_smi.py \
   --smiles 'CCO' \
-  --smiles 'CC(=O)OC1=CC=CC=C1C(=O)O' \
   --output-dir direct_results
 ```
 
-无表头 CSV/TSV 使用 `--no-header`，脚本把第 1 列视为 SMILES、第 2 列视为 ID。自定义分隔符可用 `--delimiter ';'`，制表符可写为 `--delimiter '\t'`。
+可选物种为 `human`（人）、`mouse`（小鼠）和 `rat`（大鼠），默认是人。
 
-支持的物种参数：`human`、`mouse`、`rat`，默认 `human`。
-
-## 输出与断点续跑
+## 会生成什么？
 
 输出目录主要包含：
 
-- `<mol_id>.csv`：每个成功化合物的 SwissTargetPrediction 导出结果。
-- `<输入文件名>_swiss_progress.csv`：进度清单。
-- `_download_staging/`：浏览器下载暂存目录，可在任务结束后保留用于排查。
+- `<化合物编号>.csv`：该化合物的靶点预测结果。
+- `<输入文件名>_swiss_progress.csv`：整个任务的进度表。
+- `_download_staging/`：浏览器下载时使用的临时目录，可用于排查失败原因。
 
-进度清单记录原始行号、ID、SMILES、状态、失败原因、结果文件和时间。再次用相同输入与相同输出目录运行时：
+进度表中的状态包括：
 
-- 只要对应结果 CSV 存在，该分子会自动跳过。
-- 没有结果文件的 `no_result`、`failed`、`blocked` 默认会重试。
-- 增加 `--skip-known-status` 后，上述已有终态也会跳过。
-- 同一 ID 的 SMILES 发生变化时，不会继承旧状态，会重新预测。
+- `success`：预测成功，已有结果文件。
+- `pending`：还没有处理。
+- `no_result`：等待超时或网站没有返回结果。
+- `failed`：处理失败，原因会写在进度表中。
+- `blocked`：浏览器或网络可能被网站阻断。
 
-常见状态：`pending`（待处理）、`success`（成功）、`no_result`（超时或页面无结果）、`failed`（其他错误）、`blocked`（浏览器或网络可能被阻断）。清单在每个分子完成后立即更新。
+## 中断后怎么办？
 
-## 稳定运行建议
+使用相同的输入和输出目录再次运行即可。已经存在结果 CSV 的化合物会自动跳过，没有成功的项目会重试。
 
-- 默认每个化合物之间等待 10 秒。遇到限流或页面不稳定时增大 `--request-delay`。
-- 页面计算或下载较慢时增大 `--download-timeout`，普通元素加载较慢时增大 `--wait-timeout`。
-- 连续 WebDriver 阻断达到 `--max-blocks-before-quit` 后，脚本会保存进度并退出，避免持续失败。
-- 运行期间不要关闭或手动频繁操作自动化浏览器窗口。
-- 本工具依赖网页结构。SwissTargetPrediction 更新按钮、元素 ID 或下载方式后，选择器可能需要同步调整。
+如果希望连已经标记为失败的项目也跳过，可以增加 `--skip-known-status`。如果同一编号对应的 SMILES 发生变化，脚本会把它当作新任务重新预测。
 
-## 常用参数
+## 常见问题
+
+**浏览器打不开或提示找不到驱动**
+
+Selenium 通常会自动匹配浏览器驱动。如果失败，需要下载与浏览器版本一致的 `msedgedriver` 或 `chromedriver`，再使用 `--driver-path` 指定文件。
+
+**网站加载慢，很多项目显示 no_result**
+
+增加等待时间，例如 `--download-timeout 180`。两次任务间隔可用 `--request-delay 20` 调大。
+
+**输入表有 SMILES，但脚本没有识别**
+
+明确指定列名，例如 `--smiles-column SMILES`。如果表格没有标题行，加上 `--no-header`。
+
+**连续出现 blocked**
+
+先停止任务，确认浏览器能手动访问网站，稍后再运行。不要开启多个脚本同时提交预测。
+
+网页改版后，自动点击位置可能失效，这时需要更新脚本中的网页元素规则。
+
+## 进阶参数
 
 ```text
 --input PATH                 输入文件
---smiles VALUE               直接输入 SMILES，可重复
---smiles-column NAME         SMILES 列
---id-column NAME             结果文件名所用 ID 列
---output-dir PATH            输出目录
---browser edge|chrome        浏览器
---driver-path PATH           浏览器驱动路径
+--smiles VALUE               直接输入 SMILES，可重复使用
+--smiles-column NAME         SMILES 所在列
+--id-column NAME             化合物编号所在列
+--output-dir PATH            保存目录
+--browser edge|chrome        使用的浏览器
+--driver-path PATH           手动指定浏览器驱动
 --organism human|mouse|rat   预测物种
---request-delay SECONDS      相邻任务间隔
---wait-timeout SECONDS       普通页面等待上限
---download-timeout SECONDS   计算和下载等待上限
---skip-known-status          跳过清单中已有终态
+--request-delay SECONDS      两个化合物之间的等待时间
+--wait-timeout SECONDS       页面普通操作的等待上限
+--download-timeout SECONDS   预测和下载的等待上限
+--skip-known-status          跳过进度表中已有最终状态的项目
 ```
 
-完整参数以 `python swiss_target_predict_from_smi.py --help` 为准。SwissTargetPrediction 当前页面及物种选项请参考 [官方网站](https://www.swisstargetprediction.ch/)。
+完整参数可运行 `python swiss_target_predict_from_smi.py --help` 查看。使用时请遵守 SwissTargetPrediction 网站的服务规则，避免过快或并行提交。
