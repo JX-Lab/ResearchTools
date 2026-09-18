@@ -1,0 +1,29 @@
+RNA-seq:
+  - RNA-seq
+  - RNA seq
+  - RNA sequencing
+  - transcriptome sequencing
+  - mRNA sequencing
+
+Microarray:
+  - microarray
+  - expression array
+  - gene expression array
+
+scRNA-seq:
+  - scRNA-seq
+  - scRNA seq
+  - single-cell RNA-seq
+  - single cell RNA sequencing
+  - single-cell transcriptome
+  - 10x genomics
+
+snRNA-seq:
+  - snRNA-seq
+  - snRNA seq
+  - single-nucleus RNA-seq
+  - single nucleus RNA sequencing
+
+Spatial:
+  - spatial transcriptomics
+  - spatial RNA sequencing
