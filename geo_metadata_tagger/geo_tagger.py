@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search, annotate, and filter GEO studies with auditable metadata tags."""
+"""Search, annotate, filter, and download processed GEO data."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import GEOparse
 import pandas as pd
@@ -17,6 +18,10 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 RULE_DIR = ROOT / "rules"
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+GEO_PAGE = "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={gse}"
+GEO_ROOT = "https://ftp.ncbi.nlm.nih.gov/geo/series"
+TIMEOUT = 60
+MATRIX_EXTENSIONS = (".txt", ".txt.gz", ".tsv", ".tsv.gz", ".csv", ".csv.gz")
 
 
 def load_yaml(name: str) -> dict[str, list[str]]:
@@ -244,8 +249,183 @@ def filter_samples(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     return out
 
 
+# ---------------------------------------------------------------------------
+# GEO download
+# ---------------------------------------------------------------------------
+
+def series_bucket(gse: str) -> str:
+    match = re.fullmatch(r"GSE(\d+)", gse.upper())
+    if not match:
+        raise ValueError(f"Invalid GEO Series accession: {gse}")
+    number = int(match.group(1))
+    return f"GSE{number // 1000}nnn"
+
+
+def ftp_url(gse: str, kind: str, filename: str) -> str:
+    bucket = series_bucket(gse)
+    return f"{GEO_ROOT}/{bucket}/{gse.upper()}/{kind}/{filename}"
+
+
+def ncbi_counts_url(gse: str, filename: str) -> str:
+    return (
+        "https://www.ncbi.nlm.nih.gov/geo/download/"
+        f"?type=rnaseq_counts&acc={gse.upper()}&format=file&file={filename}"
+    )
+
+
+def download_file(url: str, destination: Path) -> tuple[str, str]:
+    try:
+        with requests.get(url, stream=True, timeout=TIMEOUT) as response:
+            response.raise_for_status()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with destination.open("wb") as handle:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        handle.write(chunk)
+        return "ok", ""
+    except requests.RequestException as exc:
+        if destination.exists():
+            destination.unlink()
+        return "error", str(exc)
+
+
+def get_download_page(gse: str) -> str:
+    response = requests.get(GEO_PAGE.format(gse=gse.upper()), timeout=TIMEOUT)
+    response.raise_for_status()
+    return response.text
+
+
+def discover_downloads(gse: str) -> dict[str, list[tuple[str, str]]]:
+    """Read the GEO download page and classify direct download links."""
+    html = get_download_page(gse)
+    links = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.I)
+
+    found: dict[str, list[tuple[str, str]]] = {
+        "series_matrix": [],
+        "submitter_expression": [],
+        "ncbi_raw_counts": [],
+        "ncbi_fpkm": [],
+        "ncbi_tpm": [],
+    }
+
+    for raw_url in links:
+        url = raw_url.replace("&amp;", "&")
+        name = url.rstrip("/").rsplit("/", 1)[-1]
+        lower = name.lower()
+
+        if lower.endswith("_series_matrix.txt.gz"):
+            found["series_matrix"].append((name, url))
+
+        if "/suppl/" in lower and looks_like_expression(name):
+            found["submitter_expression"].append((name, url))
+
+        if "type=rnaseq_counts" in lower or "type=rnaseq_counts" in url.lower():
+            if "raw_counts" in lower:
+                found["ncbi_raw_counts"].append((name, url))
+            elif "norm_counts_fpkm" in lower:
+                found["ncbi_fpkm"].append((name, url))
+            elif "norm_counts_tpm" in lower:
+                found["ncbi_tpm"].append((name, url))
+
+    return {key: list(dict.fromkeys(value)) for key, value in found.items()}
+
+
+def looks_like_expression(name: str) -> bool:
+    text = name.lower()
+    return (
+        any(term in text for term in ("matrix", "expression", "counts", "fpkm", "tpm", "normalized"))
+        and text.endswith(MATRIX_EXTENSIONS)
+    )
+
+
+def choose_downloads(gse: str, data_type: str) -> list[tuple[str, str, str]]:
+    found = discover_downloads(gse)
+    selected: list[tuple[str, str, str]] = []
+
+    def add(kind: str):
+        for name, url in found[kind]:
+            selected.append((kind, name, url))
+
+    if data_type == "series_matrix":
+        add("series_matrix")
+    elif data_type == "submitter":
+        add("submitter_expression")
+    elif data_type == "ncbi_raw_counts":
+        add("ncbi_raw_counts")
+    elif data_type == "ncbi_fpkm":
+        add("ncbi_fpkm")
+    elif data_type == "ncbi_tpm":
+        add("ncbi_tpm")
+    elif data_type == "all":
+        for kind in found:
+            add(kind)
+    else:  # auto
+        # Keep the GEO Series metadata matrix and the submitter's processed
+        # expression matrix. NCBI-generated RNA-seq counts are opt-in so that
+        # one GSE does not unexpectedly produce several alternative matrices.
+        add("series_matrix")
+        if found["submitter_expression"]:
+            add("submitter_expression")
+        elif found["ncbi_raw_counts"]:
+            add("ncbi_raw_counts")
+
+    return list(dict.fromkeys(selected))
+
+
+def download_gse(gse: str, output: Path, data_type: str = "auto") -> pd.DataFrame:
+    gse = gse.upper()
+    destination_dir = output / gse
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        chosen = choose_downloads(gse, data_type)
+        discovery_error = ""
+    except requests.RequestException as exc:
+        chosen = []
+        discovery_error = str(exc)
+
+    rows = []
+    for kind, file_name, url in chosen:
+        status, message = download_file(url, destination_dir / file_name)
+        rows.append({
+            "gse": gse,
+            "file_type": kind,
+            "file_name": file_name,
+            "url": url,
+            "status": status,
+            "message": message,
+        })
+
+    if not rows:
+        rows.append({
+            "gse": gse,
+            "file_type": data_type,
+            "file_name": "",
+            "url": "",
+            "status": "not_found" if not discovery_error else "error",
+            "message": discovery_error or "No matching downloadable file was found on the GEO download page.",
+        })
+
+    manifest = pd.DataFrame(rows)
+    manifest.to_csv(destination_dir / "manifest.tsv", sep="\t", index=False)
+    return manifest
+
+
+def read_gse_values(path: Path) -> list[str]:
+    df = pd.read_csv(path, sep="\t")
+    if "gse" not in df.columns:
+        raise ValueError("Input TSV must contain a 'gse' column.")
+    return sorted({
+        str(x).strip().upper()
+        for x in df["gse"].dropna()
+        if re.fullmatch(r"GSE\d+", str(x).strip().upper())
+    })
+
+
 def main():
-    parser = argparse.ArgumentParser(description="GEO search, metadata tagging and filtering")
+    parser = argparse.ArgumentParser(
+        description="GEO search, metadata tagging, filtering, and processed-data download"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("search", help="search GEO DataSets")
@@ -262,6 +442,21 @@ def main():
     p.add_argument("--config", required=True)
     p.add_argument("--output", default="filtered_samples.tsv")
 
+    p = sub.add_parser("download", help="download processed data for one GSE")
+    p.add_argument("--gse", required=True)
+    p.add_argument("--output", default="geo_data")
+    p.add_argument(
+        "--type",
+        choices=["auto", "series_matrix", "submitter", "ncbi_raw_counts", "ncbi_fpkm", "ncbi_tpm", "all"],
+        default="auto",
+        help="download type; default: auto",
+    )
+
+    p = sub.add_parser("download-from-list", help="download GSEs from a TSV with a 'gse' column")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", default="geo_data")
+    p.add_argument("--type", choices=["auto", "series_matrix", "submitter", "ncbi_raw_counts", "ncbi_fpkm", "ncbi_tpm", "all"], default="auto")
+
     args = parser.parse_args()
 
     if args.command == "search":
@@ -273,13 +468,28 @@ def main():
         study, samples = annotate_gse(args.gse, Path(args.out))
         print(f"Annotated {args.gse}: {len(samples)} samples")
         print(study.to_string(index=False))
-    else:
+    elif args.command == "filter":
         with open(args.config, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         samples = pd.read_csv(args.input, sep="\t")
         result = filter_samples(samples, config)
         result.to_csv(args.output, sep="\t", index=False)
         print(f"Kept {len(result)} samples.")
+    elif args.command == "download":
+        manifest = download_gse(args.gse, Path(args.output), args.type)
+        print(manifest.to_string(index=False))
+    else:
+        gses = read_gse_values(Path(args.input))
+        all_manifests = [
+            download_gse(gse, Path(args.output), args.type)
+            for gse in gses
+        ]
+        if all_manifests:
+            combined = pd.concat(all_manifests, ignore_index=True)
+            output = Path(args.output)
+            output.mkdir(parents=True, exist_ok=True)
+            combined.to_csv(output / "manifest.tsv", sep="\t", index=False)
+            print(combined.to_string(index=False))
 
 
 if __name__ == "__main__":
