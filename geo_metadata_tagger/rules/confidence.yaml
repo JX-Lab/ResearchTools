@@ -1,0 +1,10 @@
+evidence_weights:
+  structured_field: 1.00
+  characteristics: 0.90
+  title_or_source: 0.85
+  summary_or_design: 0.75
+  nlp_entity: 0.70
+
+unknown:
+  value: unknown
+  confidence: 0.0
