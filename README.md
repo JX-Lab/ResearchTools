@@ -15,22 +15,6 @@
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
 | GEO 中的候选 GSE/GSM | 搜索、自动标注、按条件筛选并下载处理后数据 | `geo_metadata_tagger/` |
 
-## GEO 工具流程
-
-```text
-GEO 搜索
-  ↓
-GSE/GSM 元数据标注
-  ↓
-按物种 / 疾病 / 组织 / 技术 / bulk / 分组筛选
-  ↓
-得到最终候选 GSE
-  ↓
-识别并下载 Series Matrix / 作者处理后矩阵 / NCBI RNA-seq counts
-  ↓
-进入后续表达矩阵分析
-```
-
 ## 第一次使用
 
 每个工具文件夹里都有 README、Python 脚本和 requirements.txt。通常进入工具目录后运行：
