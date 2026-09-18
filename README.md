@@ -16,30 +16,6 @@
 | GEO 中的候选 GSE/GSM | 搜索、自动标注并按条件筛选研究和样本 | `geo_metadata_tagger/` |
 | 已经筛选好的 GEO GSE | 下载 Series Matrix 或表达相关 supplementary data | `geo_downloader/` |
 
-## GEO 数据常见工作顺序
-
-```text
-geo_metadata_tagger
-      ↓
-搜索 GEO 候选研究
-      ↓
-GSE/GSM 元数据标注
-      ↓
-按物种 / 疾病 / 组织 / 技术 / bulk / 分组筛选
-      ↓
-得到最终 GSE
-      ↓
-geo_downloader
-      ↓
-优先下载 Series Matrix
-      ↓
-必要时下载表达相关 supplementary data
-      ↓
-进入后续表达矩阵分析
-```
-
-两个工具可以独立使用，但组合起来就是一套完整的 GEO 数据获取流程。
-
 ## 第一次使用
 
 每个工具文件夹里都有 README、Python 脚本和 requirements.txt。通常进入工具目录后运行：
