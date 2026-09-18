@@ -1,6 +1,6 @@
 # 科研数据处理工具
 
-这里收集了 7 个可以单独使用的小工具。它们主要处理 Excel、CSV、PDF、化合物和 GEO 公共组学数据。
+这里收集了 6 个可以单独使用的小工具。它们主要处理 Excel、CSV、PDF、化合物和 GEO 公共组学数据。
 
 不需要先读懂全部代码。先根据自己的任务选择工具，再进入对应文件夹，按照其中 README 的“最快开始”操作即可。
 
@@ -13,8 +13,23 @@
 | 可以选中文字的 PDF | Markdown 文本或 Excel 表格 | `pdf_batch_extractor/` |
 | 一张关系表和两张信息表 | 合并后的总表，以及按中药/样本拆开的表 | `relation_table_splitter/` |
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
-| GEO 中的候选 GSE/GSM | 搜索、自动标注并按条件筛选研究和样本 | `geo_metadata_tagger/` |
-| 已经筛选好的 GEO GSE | 下载 Series Matrix 或表达相关 supplementary data | `geo_downloader/` |
+| GEO 中的候选 GSE/GSM | 搜索、自动标注、按条件筛选并下载处理后数据 | `geo_metadata_tagger/` |
+
+## GEO 工具流程
+
+```text
+GEO 搜索
+  ↓
+GSE/GSM 元数据标注
+  ↓
+按物种 / 疾病 / 组织 / 技术 / bulk / 分组筛选
+  ↓
+得到最终候选 GSE
+  ↓
+识别并下载 Series Matrix / 作者处理后矩阵 / NCBI RNA-seq counts
+  ↓
+进入后续表达矩阵分析
+```
 
 ## 第一次使用
 
