@@ -1,8 +1,34 @@
-# GEO 数据集搜索与元数据标注
+# GEO 数据搜索、标注、筛选与下载
 
-这个工具用于从 GEO 中搜索候选研究，并自动整理 GSE/GSM 的物种、疾病、组织、技术和实验分组信息，方便后续筛选和下载。
+这个工具把 GEO 公共数据获取整合成一条完整流程：先根据需求搜索候选 GSE，再解析 GSE/GSM 元数据并自动打标签，按条件筛选，最后直接从 GEO 下载可用的处理后数据。
 
-它的目标不是直接替你判断“哪个数据集最好”，而是先把 GEO 的原始元数据整理成结构化标签，并保留判断证据。
+## 工作流程
+
+```text
+人工输入搜索词 / 研究需求
+          ↓
+       GEO 搜索
+          ↓
+      候选 GSE
+          ↓
+   GSE / GSM 元数据解析
+          ↓
+自动标签 + confidence + evidence
+          ↓
+      条件筛选
+          ↓
+      最终候选 GSE
+          ↓
+     GEO 下载页面
+          ↓
+识别 Series Matrix / 作者处理后矩阵 / NCBI RNA-seq counts
+          ↓
+      下载 + manifest
+          ↓
+    后续表达矩阵分析
+```
+
+搜索、标注、筛选和下载现在属于**同一个工具**，不再需要单独安装 `geo_downloader`。
 
 ## 安装
 
@@ -22,8 +48,6 @@ python -m pip install -r requirements.txt
 ```bash
 python geo_tagger.py search "COPD lung human" --max-results 50 --output candidates.tsv
 ```
-
-搜索结果会保存为 TSV，并包含候选 GSE 的编号、标题和摘要。
 
 ### 2. 标注一个 GSE
 
@@ -47,7 +71,7 @@ output/GSE57148/
 
 ### 3. 按需求筛选
 
-准备一个 YAML，例如：
+例如 COPD 患者 vs 健康人、肺组织、bulk RNA-seq：
 
 ```yaml
 organism: Homo sapiens
@@ -72,6 +96,60 @@ python geo_tagger.py filter \
   --output filtered_samples.tsv
 ```
 
+### 4. 下载最终 GSE
+
+直接下载一个已经确认的 GSE：
+
+```bash
+python geo_tagger.py download \
+  --gse GSE57148 \
+  --output data
+```
+
+默认 `auto` 会读取 GSE 的官方 Download data 页面，尽量下载：
+
+1. Series Matrix；
+2. 如果存在，作者提交的处理后表达矩阵；
+3. 如果没有作者表达矩阵且该研究有 NCBI RNA-seq raw counts，则下载 NCBI raw counts。
+
+例如 GSE57148 会识别到 Series Matrix 和作者提交的 `GSE57148_COPD_FPKM_Normalized.txt.gz`。NCBI-generated 的 FPKM/TPM 可以显式选择，不会在默认模式下把多套替代表达矩阵全部下载下来。
+
+### 5. 批量下载
+
+输入一个包含 `gse` 列的 TSV：
+
+```text
+gse
+GSE57148
+GSE8581
+```
+
+运行：
+
+```bash
+python geo_tagger.py download-from-list \
+  --input selected_gse.tsv \
+  --output data
+```
+
+也可以指定数据类型：
+
+```bash
+python geo_tagger.py download --gse GSE57148 --type ncbi_raw_counts --output data
+python geo_tagger.py download --gse GSE57148 --type ncbi_fpkm --output data
+python geo_tagger.py download --gse GSE57148 --type ncbi_tpm --output data
+```
+
+可选类型：
+
+- `auto`：默认，下载 Series Matrix + 作者处理后表达矩阵；无作者表达矩阵时再尝试 NCBI raw counts。
+- `series_matrix`：只下载 Series Matrix。
+- `submitter`：只下载作者提交的表达相关 supplementary files。
+- `ncbi_raw_counts`：只下载 NCBI-generated raw counts。
+- `ncbi_fpkm`：只下载 NCBI-generated FPKM。
+- `ncbi_tpm`：只下载 NCBI-generated TPM。
+- `all`：下载页面上识别到的全部上述类型。
+
 ## 自动标注什么
 
 目前主要整理：
@@ -82,7 +160,7 @@ python geo_tagger.py filter \
 - **technology**：RNA-seq、Microarray、scRNA-seq、snRNA-seq、Spatial。
 - **study_type**：bulk、scRNA、snRNA、spatial。
 - **group**：如 COPD、Healthy、Treatment。
-- **matrix_available**：是否从 GEO 的补充文件元数据中找到明显的表达矩阵线索。
+- **matrix_available**：是否从 GEO 元数据中找到明显的表达矩阵线索。
 
 GSE 和 GSM 两个层级都会保留标签。因为一个 GSE 可能同时包含多个实验组，所以最终筛选时以 GSM 层面的信息更重要。
 
@@ -119,31 +197,13 @@ evidence = []
 
 这些规则和 Python 主程序分开，因此以后换成其他疾病、组织或研究主题时，不需要重新写核心程序。
 
-## 工作流程
+## 下载说明
 
-这个工具对应下面的流程：
+下载模块不是简单拼一个固定文件名，而是先读取 GSE 的官方 Download data 页面，再识别页面中实际存在的下载项。这样可以处理不同 GEO Series 的文件组织差异。
 
-```text
-人工输入搜索词
-      ↓
-GEO 搜索
-      ↓
-候选 GSE
-      ↓
-读取 GSM/GSE 元数据
-      ↓
-自动标签
-      ↓
-value + confidence + evidence
-      ↓
-人工/配置筛选
-      ↓
-待下载候选
-      ↓
-后续独立下载工具
-```
+GEO 的 RNA-seq processed data 可以包括 raw counts、FPKM、TPM 等定量矩阵；NCBI 也提供自动生成的 RNA-seq counts 下载入口。正式分析前仍应检查基因 ID、基因组版本、样本名、表达值类型和处理流程。
 
-当前版本暂时不下载表达矩阵。这样搜索、判断和下载三个环节可以独立维护。
+程序默认不下载 SRA/FASTQ 原始测序数据，因为本工具的目标是先获取可用于表达分析的 processed data。需要原始测序数据时，再单独处理 SRA。
 
 ## 注意事项
 
