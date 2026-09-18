@@ -11,7 +11,7 @@
 | 化合物名称、CID、CAS 或 SMILES | PubChem 信息 | `pubchem_downloader/` |
 | 化合物的 SMILES | 可能作用的蛋白质靶点 | `swiss_target_prediction/` |
 | 可以选中文字的 PDF | Markdown 文本或 Excel 表格 | `pdf_batch_extractor/` |
-| 一张关系表和两张信息表 | 合并后的总表，以及按中药/样本拆开的表 | `relation_table_splitter/` |
+| 一张关系表和两张信息表 | 合并后的总表，以及按样本拆开的表 | `relation_table_splitter/` |
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
 | GEO 中的候选 GSE/GSM | 搜索、自动标注、按条件筛选并下载处理后数据 | `geo_metadata_tagger/` |
 
