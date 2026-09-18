@@ -15,10 +15,6 @@
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
 | GEO 中的候选 GSE/GSM | 搜索、自动标注、按条件筛选并下载处理后数据 | `geo_metadata_tagger/` |
 
-## 第一次使用
-
-每个工具文件夹里都有 README、Python 脚本和 requirements.txt。通常进入工具目录后运行：
-
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
