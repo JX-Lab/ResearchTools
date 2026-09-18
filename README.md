@@ -1,6 +1,6 @@
 # 科研数据处理工具
 
-这里收集了 6 个可以单独使用的小工具。它们主要处理 Excel、CSV、PDF、化合物和 GEO 公共组学数据。
+这里收集了 7 个可以单独使用的小工具。它们主要处理 Excel、CSV、PDF、化合物和 GEO 公共组学数据。
 
 不需要先读懂全部代码。先根据自己的任务选择工具，再进入对应文件夹，按照其中 README 的“最快开始”操作即可。
 
@@ -14,6 +14,31 @@
 | 一张关系表和两张信息表 | 合并后的总表，以及按中药/样本拆开的表 | `relation_table_splitter/` |
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
 | GEO 中的候选 GSE/GSM | 搜索、自动标注并按条件筛选研究和样本 | `geo_metadata_tagger/` |
+| 已经筛选好的 GEO GSE | 下载 Series Matrix 或表达相关 supplementary data | `geo_downloader/` |
+
+## GEO 数据常见工作顺序
+
+```text
+geo_metadata_tagger
+      ↓
+搜索 GEO 候选研究
+      ↓
+GSE/GSM 元数据标注
+      ↓
+按物种 / 疾病 / 组织 / 技术 / bulk / 分组筛选
+      ↓
+得到最终 GSE
+      ↓
+geo_downloader
+      ↓
+优先下载 Series Matrix
+      ↓
+必要时下载表达相关 supplementary data
+      ↓
+进入后续表达矩阵分析
+```
+
+两个工具可以独立使用，但组合起来就是一套完整的 GEO 数据获取流程。
 
 ## 第一次使用
 
@@ -25,24 +50,4 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## GEO 工具
-
-`geo_metadata_tagger/` 用于：
-
-```text
-搜索 GEO
-  ↓
-获得候选 GSE
-  ↓
-读取 GSE/GSM 元数据
-  ↓
-自动整理标签
-  ↓
-confidence + evidence
-  ↓
-按需求筛选
-  ↓
-交给后续下载流程
-```
-
-它目前只负责搜索、元数据标注和筛选，不下载表达矩阵。自动标签仍应人工抽查。
+正式分析前仍应人工抽查自动标签，并检查下载后的表达矩阵中的基因 ID、样本名、表达值类型和分组信息。
