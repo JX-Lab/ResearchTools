@@ -1,0 +1,12 @@
+organism: Homo sapiens
+disease:
+  include: [COPD]
+tissue:
+  include: [lung]
+study_type:
+  include: [bulk]
+technology:
+  include: [RNA-seq]
+groups:
+  require: [COPD, Healthy]
+matrix_available: true
