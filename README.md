@@ -13,7 +13,7 @@
 | 可以选中文字的 PDF | Markdown 文本或 Excel 表格 | `pdf_batch_extractor/` |
 | 一张关系表和两张信息表 | 合并后的总表，以及按中药/样本拆开的表 | `relation_table_splitter/` |
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
-| GEO 中的候选 GSE/GSM | 自动整理物种、疾病、组织、技术、分组和证据，供后续筛选 | `geo_metadata_tagger/` |
+| GEO 中的候选 GSE/GSM | 搜索、自动标注并按条件筛选研究和样本 | `geo_metadata_tagger/` |
 
 ## 第一次使用
 
@@ -27,6 +27,22 @@ python -m pip install -r requirements.txt
 
 ## GEO 工具
 
-`geo_metadata_tagger/` 用于“先搜索 → 自动判断 → 人工复核/筛选 → 再下载表达矩阵”。第一版只处理 GEO 元数据，不下载表达矩阵；输出 GSE 级 `study.tsv` 和 GSM 级 `sample.tsv`，并保留 `confidence` 与 `evidence` 方便人工抽查。
+`geo_metadata_tagger/` 用于：
 
-正式分析前仍应人工抽查自动标签。
+```text
+搜索 GEO
+  ↓
+获得候选 GSE
+  ↓
+读取 GSE/GSM 元数据
+  ↓
+自动整理标签
+  ↓
+confidence + evidence
+  ↓
+按需求筛选
+  ↓
+交给后续下载流程
+```
+
+它目前只负责搜索、元数据标注和筛选，不下载表达矩阵。自动标签仍应人工抽查。
