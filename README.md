@@ -15,10 +15,3 @@
 | 一列基因名或关键词 | PubMed 检索数量 | `pubmed_term_counter/` |
 | GEO 中的候选 GSE/GSM | 搜索、自动标注、按条件筛选并下载处理后数据 | `geo_metadata_tagger/` |
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-正式分析前仍应人工抽查自动标签，并检查下载后的表达矩阵中的基因 ID、样本名、表达值类型和分组信息。
